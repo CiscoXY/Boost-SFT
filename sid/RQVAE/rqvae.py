@@ -11,10 +11,10 @@ from data.utils import item_batch_to
 from data.utils import cycle
 from data.utils import next_item_batch
 from data.utils import write_record_log
-from modules.rqvae import RqVae                             # 必需品
-from modules.quantize import QuantizeForwardMode            # 必需品
-from modules.tokenizer.semids import SemanticIdTokenizer    # 必须品
-from modules.utils import parse_config                       # 必需品
+from modules.rqvae import RqVae
+from modules.quantize import QuantizeForwardMode
+from modules.tokenizer.semids import SemanticIdTokenizer
+from modules.utils import parse_config
 from torch.optim import AdamW
 from torch.utils.data import BatchSampler
 from torch.utils.data import DataLoader
@@ -68,8 +68,8 @@ def train(
     raw_dataset = TigerDataset(
         dim_cutoff=vae_input_dim , embedding_size=tuple(embedding_size),data_dir=load_data_dir,record_path=record_path
     )
-    print(f"创建rar_dataset耗时{(time.time() - raw_dataset_start):.2f} s")
-    write_record_log(f"创建rar_dataset耗时{(time.time() - raw_dataset_start):.2f} s" , log_path=record_path)
+    print(f"Created raw_dataset in {(time.time() - raw_dataset_start):.2f} s")
+    write_record_log(f"Created raw_dataset in {(time.time() - raw_dataset_start):.2f} s" , log_path=record_path)
 
     train_dataloader_start = time.time()
 
@@ -82,8 +82,8 @@ def train(
         collate_fn=lambda batch: batch,
     )
     train_dataloader = cycle(train_dataloader)
-    print(f"创建train_dataloader耗时{(time.time() - train_dataloader_start):.2f} s")
-    write_record_log(f"创建train_dataloader耗时{(time.time() - train_dataloader_start):.2f} s" , log_path=record_path)
+    print(f"Created train_dataloader in {(time.time() - train_dataloader_start):.2f} s")
+    write_record_log(f"Created train_dataloader in {(time.time() - train_dataloader_start):.2f} s" , log_path=record_path)
 
 
     eval_dataloader_start = time.time()
@@ -96,14 +96,14 @@ def train(
         batch_size=None,
         collate_fn=lambda batch: batch,
     )
-    print(f"创建eval_dataloader耗时{(time.time() - eval_dataloader_start):.2f} s")
-    write_record_log(f"创建eval_dataloader耗时{(time.time() - eval_dataloader_start):.2f} s" , log_path=record_path)
+    print(f"Created eval_dataloader in {(time.time() - eval_dataloader_start):.2f} s")
+    write_record_log(f"Created eval_dataloader in {(time.time() - eval_dataloader_start):.2f} s" , log_path=record_path)
 
     train_loader_prepare = time.time()
 
     train_dataloader = accelerator.prepare(train_dataloader)
-    print(f"创建train_dataloader_prepare耗时{(time.time() - train_loader_prepare):.2f} s")
-    write_record_log(f"创建train_dataloader_prepare耗时{(time.time() - train_loader_prepare):.2f} s ", log_path=record_path)
+    print(f"Created train_dataloader_prepare in {(time.time() - train_loader_prepare):.2f} s")
+    write_record_log(f"Created train_dataloader_prepare in {(time.time() - train_loader_prepare):.2f} s ", log_path=record_path)
 
     model = RqVae(
         input_dim=vae_input_dim,
@@ -242,7 +242,7 @@ def train(
                     writer.add_scalar('Eval/Reconstruction_Loss', eval_losses[1], iter+1)
                     writer.add_scalar('Eval/RQVAE_Loss', eval_losses[2], iter+1)
                 eval_end = time.time()
-                write_record_log(f"Eval Res - Iter {iter+1} 总耗时 {(eval_end - eval_start):.2f} s", log_path=record_path)
+                write_record_log(f"Eval Res - Iter {iter+1} total time {(eval_end - eval_start):.2f} s", log_path=record_path)
 
             if accelerator.is_main_process:
                 if (iter + 1) % save_model_every == 0 or iter + 1 == iterations:
@@ -267,14 +267,14 @@ def generate_emb(
     pre_load_embedding_size : list[int],
 ):
     """
-    这个generate是 embedding -> sid的generate
+    Generate SIDs from embeddings.
 
-    load_data_dir : 保存有sku 、 embedding字段的.pt文件的文件夹
-    k_files_per_save : 每k个pt文件打包成一个TigerDataset进行推理，减少内存占用和可能的异常
-    save_data_dir : 保存结果的文件夹
-    pretrained_rqvae_paths : 预训练好的rqvae模型路径
-    record_path : 记录日志的文件
-    embedding_size : 预先留存的巨大tensor，减少整合tensor的耗时
+    load_data_dir : directory containing .pt files with sku and embedding fields
+    k_files_per_save : batch k pt files into one TigerDataset for inference, reducing memory usage
+    save_data_dir : directory to save results
+    pretrained_rqvae_paths : list of pretrained RQVAE model paths
+    record_path : log file path
+    pre_load_embedding_size : pre-allocated tensor size to reduce concatenation overhead
     """
     accelerator = Accelerator()
     device = accelerator.device
@@ -282,8 +282,7 @@ def generate_emb(
         os.makedirs(save_data_dir)
     def process_single_model(model_path , full_dataset , save_sign):
         """
-        获取model_path的父路径，然后读取父路径下的config.json
-        然后根据config.json中的参数，初始化模型
+        Read config.json from the parent directory of model_path and initialize the model.
         """
         config =  json.load(open(os.path.join(os.path.dirname(model_path) , "config.json"), "r", encoding="utf-8"))
         n_layers = config["n_layers"]
@@ -294,13 +293,13 @@ def generate_emb(
             os.makedirs(save_data_dir4model)
 
         start_time = time.time()
-        # 输入一个model_path就行，他会自动捕捉父路径下的config.json
+        # Auto-detects config.json from parent directory
         tokenizer = SemanticIdTokenizer(
             rqvae_weights_path=model_path,
             )
         tokenizer.rq_vae = accelerator.prepare(tokenizer.rq_vae)
         write_record_log("================" ,  log_path=record_path)
-        write_record_log(f"加载 {model_path} 耗时{(time.time() - start_time):.2f} s" , log_path=record_path)
+        write_record_log(f"Loaded {model_path} in {(time.time() - start_time):.2f} s" , log_path=record_path)
 
         if accelerator.is_main_process:
             tokenizer.reset()
@@ -309,7 +308,7 @@ def generate_emb(
             write_record_log(f"{model_path} generate start ......" , log_path=record_path)
             generate_start = time.time()
             corpus_ids , sku_ids = tokenizer.precompute_corpus_ids(full_dataset)
-            write_record_log(f"{model_path} precomput_corpus_ids 耗时 {(time.time() - generate_start):.3f}")
+            write_record_log(f"{model_path} precompute_corpus_ids took {(time.time() - generate_start):.3f}s")
             max_duplicates = corpus_ids[:, -1].max() / corpus_ids.shape[0]
 
             _, counts = torch.unique(
@@ -327,7 +326,7 @@ def generate_emb(
                 write_record_log(f'Codebook_Usage_Layer_{sid} : {codebook_usage:.4f}' , log_path=record_path)
             write_record_log(f"RQVAE Entropy : {(rqvae_entropy.cpu().item()):.6f}" , log_path=record_path)
             write_record_log(f"Max Duplicates : {(max_duplicates.cpu().item()):.6f}" , log_path=record_path)
-            write_record_log(f"{model_path} 码本计算/指标总耗时 {(time.time() - generate_start):.2f} s", log_path=record_path)
+            write_record_log(f"{model_path} Codebook computation/metrics total time {(time.time() - generate_start):.2f} s", log_path=record_path)
             
             if hasattr(corpus_ids, "cpu"):
                 corpus_ids = corpus_ids.cpu().tolist()
@@ -338,7 +337,7 @@ def generate_emb(
             item_to_tokens,
             tokens_to_item,
             ) = process_rq_vae_codebook(corpus_ids , sku_ids)
-            write_record_log(f"{model_path} 码本生成总耗时 {(time.time() - generate_start):.2f} s", log_path=record_path)
+            write_record_log(f"{model_path} Codebook generation total time {(time.time() - generate_start):.2f} s", log_path=record_path)
             save_data_dict = {
                 "item_to_tokens": item_to_tokens,
                 "tokens_to_item": tokens_to_item,
@@ -346,16 +345,16 @@ def generate_emb(
             torch.save(
                 save_data_dict, os.path.join(save_data_dir4model, f"saved_tokenizer_data{save_sign}.pt")
             )
-            write_record_log(f"{model_path} 总耗时 {(time.time() - generate_start):.2f} s", log_path=record_path)
+            write_record_log(f"{model_path} total time {(time.time() - generate_start):.2f} s", log_path=record_path)
     
     pt_files = glob.glob(str(Path(load_data_dir) / "*.pt"))
-    # 每k个pt文件打包成一个TigerDataset进行推理，减少内存占用和可能的异常
+    # Batch pt files into TigerDataset to reduce memory usage
     pt_file_batchs = [pt_files[i:i+k_files_per_save] for i in range(0, len(pt_files), k_files_per_save)]
     for idx , pt_file_batch in enumerate(pt_file_batchs):
-        gc.collect()  # 清理Python内存
+        gc.collect()
         if torch.cuda.is_available():
-            torch.cuda.empty_cache()  # 清理未使用的CUDA显存
-            torch.cuda.ipc_collect()  # 清理进程间通信残留的显存
+            torch.cuda.empty_cache()
+            torch.cuda.ipc_collect()
         raw_dataset = TigerDataset(
             pt_files=pt_file_batch, dim_cutoff=pre_load_embedding_size[-1] , embedding_size=tuple(pre_load_embedding_size) , record_path=record_path
         )
@@ -372,14 +371,14 @@ def generate_info(
     record_path : str,
 ):
     """
-    这个generate是 sku info(json文件，包含sku和text template的必须字段) -> sid(txt)的 端到端sid生成 , 主要处理增量更新
-    因此只支持一个embedding model 以及 一个pretraiedn_rqvae_path
+    End-to-end SID generation from sku info (JSON files containing sku and text template fields) to sid (txt).
+    Primarily handles incremental updates, so only one embedding model and one pretrained_rqvae_path are supported.
 
-    load_data_dir : 保存有sku信息的文件夹(只支持json格式)
-    save_data_dir : 保存结果的文件夹，保存格式为txt，原始字段为7个，sku , sid1 , sid2 , sid3 , num_sid1 , num_sid2 , num_sid3，用斜杠t分隔
-    embedding_model_path : 做embedding的模型
-    pretrained_rqvae_paths : 预训练好的rqvae模型路径
-    record_path : 记录日志的文件
+    load_data_dir : directory containing sku info files (JSON format only)
+    save_data_dir : directory to save results as txt, with 7 tab-separated fields: sku, sid1, sid2, sid3, num_sid1, num_sid2, num_sid3
+    embedding_model_path : embedding model path
+    pretrained_rqvae_path : pretrained RQVAE model path
+    record_path : log file path
     """
     accelerator = Accelerator()
     device = accelerator.device
@@ -387,15 +386,14 @@ def generate_info(
 
     BATCH_SIZE = 10_0000
     TEXT_TEMPLATE = """
-    商品名: {item_name}
-    所属三级类目: {cid1_name} | {cid2_name} | {cid3_name}
+    Product name: {item_name}
+    Category L3: {cid1_name} | {cid2_name} | {cid3_name}
     """.strip()
     MAX_LENGTH = 1024
     def TemplatedTextDataset_fn(batch):
-        """批量处理函数：收集文本、sku和元数据"""
+        """Batch processing: collect text, sku, and metadata"""
         texts = [item["text"] for item in batch]
-        skus = [item["sku"] for item in batch]  # 单独提取sku
-        # 保留其他元数据（如果后续需要）
+        skus = [item["sku"] for item in batch]
         metadata = [
             {k: v for k, v in item.items() if k not in ["text", "sku"]} 
             for item in batch
@@ -404,7 +402,7 @@ def generate_info(
     
 
     start_time = time.time()
-    # 加载embedding model
+    # Load embedding model
     model_kwargs = {
         "model": embedding_model_path,
         "task": "embed",
@@ -414,8 +412,8 @@ def generate_info(
     }
     embedding_model = LLM(** model_kwargs)
 
-    # 加载RQVAE
-    # 输入一个model_path就行，他会自动捕捉父路径下的config.json
+    # Load RQVAE
+    # Auto-detects config.json from parent directory
     config =  json.load(open(os.path.join(os.path.dirname(pretrained_rqvae_path) , "config.json"), "r", encoding="utf-8"))
     n_layers = config["n_layers"]
     codebook_size = config["codebook_size"]
@@ -424,7 +422,7 @@ def generate_info(
         )
     tokenizer.rq_vae = accelerator.prepare(tokenizer.rq_vae)
     write_record_log("================" ,  log_path=record_path)
-    write_record_log(f"加载 {embedding_model_path} 和 {pretrained_rqvae_path} 耗时{(time.time() - start_time):.2f} s" , log_path=record_path)
+    write_record_log(f"Loaded {embedding_model_path} and {pretrained_rqvae_path} in {(time.time() - start_time):.2f} s" , log_path=record_path)
 
     total_sku_errors = 0
     json_files = glob.glob(str(Path(load_data_dir) / "*.json"))
@@ -432,7 +430,7 @@ def generate_info(
     for input_file in json_files:
         file_start_time = time.time()
         file_name = os.path.basename(input_file)
-        print(f"\n开始处理文件: {file_name}")
+        print(f"\nProcessing file: {file_name}")
         
         embedding_dataset = TemplatedTextDataset(
             file_path=input_file,
@@ -449,8 +447,8 @@ def generate_info(
             shuffle=False,
             num_workers=num_workers,
             collate_fn=TemplatedTextDataset_fn,
-            pin_memory=True,  # 启用内存固定 , 默认使用GPU了
-            prefetch_factor=2  # 预加载下一批数据
+            pin_memory=True,
+            prefetch_factor=2
         )
         all_skus_file = []
         all_embeddings_file = []
@@ -458,41 +456,40 @@ def generate_info(
         file_sku_errors = 0
         with torch.no_grad(): 
             for batch_idx, batch_dict in enumerate(tqdm(
-                embedding_dataloader, total=len(embedding_dataloader), desc=f"处理 {file_name}"
+                embedding_dataloader, total=len(embedding_dataloader), desc=f"Processing {file_name}"
             )):
                 batch_start_time = time.time()
                 
-                # 提取文本、sku和元数据
+                # Extract text, sku, and metadata
                 texts = batch_dict["text"]
                 sku_strs = batch_dict["sku"]  
                 # metadata = batch_dict["metadata"]  
                 
-                # sku：转换为int64，记录转换错误
+                # Convert sku to int64, log errors
                 batch_skus = []
                 for sku_str in sku_strs:
                     try:
                         if sku_str is None:
-                            raise ValueError("sku为空")
+                            raise ValueError("sku is empty")
                         sku_int = int(sku_str.strip())
                         batch_skus.append(sku_int)
                     except (ValueError, TypeError) as e:
                         file_sku_errors += 1
                         total_sku_errors += 1
-                        print(f"警告：sku转换失败（值：{sku_str}，错误：{e}），跳过该条目")
-                        # 用特殊值标记错误（后续过滤）
+                        print(f"Warning: sku conversion failed (value: {sku_str}, error: {e}), skipping")
                         batch_skus.append(-1)
                 
-                # 生成embedding
+                # Generate embeddings
                 outputs = embedding_model.embed(texts)
                 embeddings = torch.tensor([o.outputs.embedding for o in outputs])
                 embeddings = embeddings.to(dtype=torch.float32) 
                 
-                # 过滤掉sku转换错误的条目（避免无效数据）
+                # Filter out entries with sku conversion errors
                 valid_mask = [sku != -1 for sku in batch_skus]
                 valid_skus = [sku for sku, mask in zip(batch_skus, valid_mask) if mask]
                 valid_embeddings = embeddings[valid_mask] 
                 
-                # 收集数据
+                # Collect data
                 all_skus_file.extend(valid_skus)
                 all_embeddings_file.append(valid_embeddings)  
                 
@@ -517,26 +514,26 @@ def generate_info(
         file_total_time = time.time() - file_start_time
         avg_batch_time = sum(batch_times_file) / len(batch_times_file) if batch_times_file else 0
         
-        log_message = (f"文件 {file_name} embedding生成完成 - "
-                      f"总耗时: {file_total_time:.4f}s, "
-                      f"batch数量: {len(embedding_dataloader)}, "
-                      f"平均batch耗时: {avg_batch_time:.4f}s, "
-                      f"模板应用错误行数: {template_error_count}/{total_lines}, "
-                      f"sku转换错误数: {file_sku_errors}/{valid_count + file_sku_errors}")
+        log_message = (f"File {file_name} embedding generation done - "
+                      f"total time: {file_total_time:.4f}s, "
+                      f"batch count: {len(embedding_dataloader)}, "
+                      f"avg batch time: {avg_batch_time:.4f}s, "
+                      f"template errors: {template_error_count}/{total_lines}, "
+                      f"sku conversion errors: {file_sku_errors}/{valid_count + file_sku_errors}")
         print(log_message)
         write_record_log(log_message , log_path=record_path)
-        # 推理出来的结果用TigerDataset_Direct构成dataset，需要注意的是embedding的shape是 [len_dataloader,embedding_dim] , sku则是int64(得转换一下) , 然后是numpy的array
+        # Build dataset from inference results using TigerDataset_Direct
         sid_start_time = time.time()
         raw_dataset = TigerDataset_Direct(embeddings= file_embeddings, skus=file_skus)
         sid_dataset = ItemData(raw_dataset, train_test_split="all")
-        write_record_log(f"sid dataloader耗时 : {(time.time() - sid_start_time):.3f} s" , log_path = record_path)
+        write_record_log(f"sid dataloader took {(time.time() - sid_start_time):.3f} s" , log_path = record_path)
 
         if accelerator.is_main_process:
             tokenizer.reset()
             tokenizer.rq_vae.eval()
             generate_start = time.time()
             corpus_ids , sku_ids = tokenizer.precompute_corpus_ids(sid_dataset)
-            write_record_log(f"{input_file} precomput_corpus_ids 耗时 {(time.time() - generate_start):.3f}")
+            write_record_log(f"{input_file} precompute_corpus_ids took {(time.time() - generate_start):.3f}s")
             max_duplicates = corpus_ids[:, -1].max() / corpus_ids.shape[0]
 
             _, counts = torch.unique(
@@ -554,7 +551,7 @@ def generate_info(
                 write_record_log(f'Codebook_Usage_Layer_{sid} : {codebook_usage:.4f}' , log_path=record_path)
             write_record_log(f"RQVAE Entropy : {(rqvae_entropy.cpu().item()):.6f}" , log_path=record_path)
             write_record_log(f"Max Duplicates : {(max_duplicates.cpu().item()):.6f}" , log_path=record_path)
-            write_record_log(f"{file_name} 码本计算/指标总耗时 {(time.time() - generate_start):.2f} s", log_path=record_path)
+            write_record_log(f"{file_name} Codebook computation/metrics total time {(time.time() - generate_start):.2f} s", log_path=record_path)
             
             if hasattr(corpus_ids, "cpu"):
                 corpus_ids = corpus_ids.cpu().tolist()
@@ -563,20 +560,20 @@ def generate_info(
 
             item_to_tokens , _ = process_rq_vae_codebook(corpus_ids , sku_ids)
 
-            write_record_log(f"{file_name} 码本生成总耗时 {(time.time() - generate_start):.2f} s", log_path=record_path)
+            write_record_log(f"{file_name} Codebook generation total time {(time.time() - generate_start):.2f} s", log_path=record_path)
         
-        # 结果保存 也就是item_to_tokens这个dict的结果保存成txt 七个字段 sku , sid1 , sid2 , sid3 , num_sid1 , num_sid2 , num_sid3 ，key是sku，value是个str，得做解析
+        # Save results as txt: sku, sid1, sid2, sid3, num_sid1, num_sid2, num_sid3
         save_path = os.path.join(save_data_dir, os.path.splitext(file_name)[0] + ".txt")
         with open(save_path, "w", encoding="utf-8") as f:
             for sku, tokens in item_to_tokens.items():
-                # 解析tokens
+                # Parse tokens
                 sid = "".join(tokens)
                 sid1 , sid2 , sid3 = tokens
                 num_sid1 , num_sid2 , num_sid3 = re.findall(r'<[a-zA-Z]+_(\d+)>', sid)
-                # 写入文件
+                # Write to file
                 f.write(f"{sku}\t{sid1}\t{sid2}\t{sid3}\t{num_sid1}\t{num_sid2}\t{num_sid3}\n")
         
-        write_record_log(f"{file_name} 总耗时 {(time.time() - file_start_time):.2f} s", log_path=record_path)
+        write_record_log(f"{file_name} total time {(time.time() - file_start_time):.2f} s", log_path=record_path)
 
 
 

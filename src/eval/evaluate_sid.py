@@ -8,36 +8,24 @@ import numpy as np
 import pandas as pd
 
 
-# GROUNDTRUTH_PATH = '/mnt/data/userseq/test/Books.csv'
-# SID_ITEM_MAP_PATH = '/mnt/data/sid/Books/checkpoint_120000/itemid_to_sid.csv'
-# JSONL_DIR = '/mnt/data/generate/Books/sft_loss_version_权重金龙鱼_消融_tp_06_n_20'
+GROUNDTRUTH_PATH = '/path/to/groundtruth/dataset.csv'
+SID_ITEM_MAP_PATH = '/path/to/sid_map/itemid_to_sid.csv'
+JSONL_DIR = "/path/to/generated/experiment_output"
 
-# GROUNDTRUTH_PATH = '/mnt/data/userseq/test/Beauty.csv'
-# SID_ITEM_MAP_PATH = '/mnt/data/sid/Beauty/checkpoint_120000/itemid_to_sid.csv'
-# JSONL_DIR = '/mnt/data/generate/Beauty/sft_loss_version_权重金龙鱼_消融_tp_06_n_20'
-
-
-GROUNDTRUTH_PATH = '/mnt/data/userseq/test/Sports_Outdoors.csv'
-SID_ITEM_MAP_PATH = '/mnt/data/sid/Sports_Outdoors/checkpoint_120000/itemid_to_sid.csv'
-JSONL_DIR = "/mnt/data/generate/Sports_Outdoors/sft_loss_version_权重金龙鱼_消融_tp_06_n_20"
-
-# 所有结果会统一放到这个子目录下。
 OUTPUT_DIR = os.path.join(JSONL_DIR, 'sid_level_metrics')
 
 K_VALUES = [1, 3, 5, 10, 20]
 SID_LEVELS = {
-    'sid1': 1,  # 只要求 <a_x> 命中
-    'sid2': 2,  # 要求 <a_x><b_y> 命中
-    'sid3': 3,  # 要求 <a_x><b_y><c_z> 全命中
+    'sid1': 1,
+    'sid2': 2,
+    'sid3': 3,
 }
 
-# 形如 <a_10><b_113><c_64>
 SID_PATTERN = re.compile(r'<a_(\d{1,3})><b_(\d{1,3})><c_(\d{1,3})>')
 MAX_PREDICT_LEN = 20
 
 
 def calculate_hit_rate(predicted_items, true_item, k):
-    """计算 Hit Rate @k。"""
     if k <= 0:
         return np.nan
 
@@ -46,7 +34,6 @@ def calculate_hit_rate(predicted_items, true_item, k):
 
 
 def calculate_ndcg(predicted_items, true_item, k):
-    """计算单标签 NDCG @k。"""
     if k <= 0:
         return np.nan
 
@@ -63,14 +50,13 @@ def calculate_ndcg(predicted_items, true_item, k):
 
 
 def load_data():
-    """加载 groundtruth 和 item_id -> sid 映射。"""
     gt_df = pd.read_csv(GROUNDTRUTH_PATH)
     if 'item_id' not in gt_df.columns:
-        raise ValueError("Groundtruth CSV 必须包含 'item_id' 列。")
+        raise ValueError("Groundtruth CSV must contain 'item_id' column.")
 
     map_df = pd.read_csv(SID_ITEM_MAP_PATH, dtype={'item_id': 'int', 'sid': 'str'})
     if 'item_id' not in map_df.columns or 'sid' not in map_df.columns:
-        raise ValueError("SID-Item Map CSV 必须包含 'item_id' 和 'sid' 列。")
+        raise ValueError("SID-Item Map CSV must contain 'item_id' and 'sid' columns.")
 
     map_df = map_df.dropna(subset=['item_id', 'sid']).drop_duplicates(subset=['item_id'], keep='first')
     item_to_sid = dict(zip(map_df['item_id'].astype(int), map_df['sid'].astype(str)))
@@ -79,12 +65,6 @@ def load_data():
 
 
 def sid_to_level_key(sid, level):
-    """
-    把完整 SID 转成指定层级的比较 key：
-    - level=1: <a_x>
-    - level=2: <a_x><b_y>
-    - level=3: <a_x><b_y><c_z>
-    """
     if not isinstance(sid, str):
         return None
 
@@ -104,7 +84,6 @@ def sid_to_level_key(sid, level):
 
 
 def normalize_predict_list(raw_predict_value, line_num, file_path):
-    """把 jsonl 中的 predict 字段统一解析成 list。"""
     if isinstance(raw_predict_value, list):
         return raw_predict_value
 
@@ -132,15 +111,6 @@ def normalize_predict_list(raw_predict_value, line_num, file_path):
 
 
 def parse_sid_predictions(predict_list, level):
-    """
-    将预测的完整 SID list 转为指定层级的 SID key list。
-
-    返回：
-    - final_sid_list: 层级 SID 列表，去重后截断到 MAX_PREDICT_LEN
-    - parse_fail_count: 不符合完整 SID 格式的预测数量
-    - total_sid_count: 原始预测数量
-    - duplicate_count: 转成层级 key 后的重复数量
-    """
     level_sid_list = []
     total_sid_count = len(predict_list)
     parse_fail_count = 0
@@ -168,7 +138,6 @@ def parse_sid_predictions(predict_list, level):
 
 
 def process_jsonl_file(file_path, gt_df, item_to_sid_map, sid_level):
-    """处理单个 jsonl 文件，计算指定 SID 粒度下的指标和统计信息。"""
     all_predictions_data = []
     total_lines = 0
     parsed_lines = 0
@@ -230,14 +199,14 @@ def process_jsonl_file(file_path, gt_df, item_to_sid_map, sid_level):
     metrics_series = pd.Series(metrics_data)
 
     stats_data = {
-        '总数据量': total_predict_count,
-        '可评估数据量': evaluable_count,
-        '真实item缺失SID数量': missing_truth_sid_count,
-        '原始预测SID总数量': total_original_sid_count,
-        '平均解析失败个数': total_parse_fail_count / evaluable_count if evaluable_count > 0 else 0,
-        '解析失败占比': total_parse_fail_count / total_original_sid_count if total_original_sid_count > 0 else 0,
-        '平均最终SID列表长度': total_sid_list_len / evaluable_count if evaluable_count > 0 else 0,
-        'SID重复数量均值': total_duplicate_count / evaluable_count if evaluable_count > 0 else 0,
+        'total_data_count': total_predict_count,
+        'evaluable_data_count': evaluable_count,
+        'missing_truth_sid_count': missing_truth_sid_count,
+        'total_original_pred_sid_count': total_original_sid_count,
+        'avg_parse_fail_count': total_parse_fail_count / evaluable_count if evaluable_count > 0 else 0,
+        'parse_fail_ratio': total_parse_fail_count / total_original_sid_count if total_original_sid_count > 0 else 0,
+        'avg_final_sid_list_length': total_sid_list_len / evaluable_count if evaluable_count > 0 else 0,
+        'avg_sid_duplicate_count': total_duplicate_count / evaluable_count if evaluable_count > 0 else 0,
     }
     stats_series = pd.Series(stats_data)
 
@@ -245,7 +214,6 @@ def process_jsonl_file(file_path, gt_df, item_to_sid_map, sid_level):
 
 
 def extract_checkpoint_number(filename):
-    """从文件名/文件夹名中提取 checkpoint/ckpt 对应的数字，用于排序。"""
     checkpoint_pattern = re.compile(r'(?:checkpoint-|ckpt_)(\d+)')
     match = checkpoint_pattern.search(filename)
     if match:
@@ -254,7 +222,6 @@ def extract_checkpoint_number(filename):
 
 
 def save_level_results(output_dir, level_name, all_metrics, all_stats):
-    """保存某个 SID 粒度下的 metrics 和 stats。"""
     if not all_metrics:
         print(f"    Warning: No files were successfully processed for {level_name}.")
         return
@@ -287,7 +254,6 @@ def save_level_results(output_dir, level_name, all_metrics, all_stats):
 
 
 def main():
-    """主函数，负责控制流程、文件加载和结果保存。"""
     if not os.path.isdir(JSONL_DIR):
         print(f"Error: JSONL directory not found at {JSONL_DIR}")
         return

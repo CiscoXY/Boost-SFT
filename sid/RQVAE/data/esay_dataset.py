@@ -24,7 +24,7 @@ class TigerDataset(PreprocessingMixin):
     def __init__(
         self,
         dim_cutoff,
-        # 预留embedding的完整内存，这样加载数据快
+        # Pre-allocate full embedding memory for faster data loading
         embedding_size=(140_0000, 2560),
         record_path = None,
         data_dir = None,
@@ -32,13 +32,13 @@ class TigerDataset(PreprocessingMixin):
     ):
         """
         Args:
-            dim_cutoff : embedding的截断
-            embedding_size : 预定义的embedding的完整内存
-            record_path : 记录日志的路径
-            Note：
-                1. 如果data_dir和pt_files都为None，则无法加载数据
-                2. 如果data_dir不为None，则从data_dir中加载.pt文件
-                3. 如果pt_files不为None，则从pt_files中加载.pt文件
+            dim_cutoff : embedding truncation dimension
+            embedding_size : pre-defined full embedding memory size
+            record_path : log file path
+            Note:
+                1. If both data_dir and pt_files are None, no data can be loaded
+                2. If data_dir is not None, load .pt files from data_dir
+                3. If pt_files is not None, load .pt files from pt_files list
         """
         self.data_dir = data_dir
         self.pt_files = pt_files
@@ -54,7 +54,7 @@ class TigerDataset(PreprocessingMixin):
         max_num_items, embedding_dim = self.embedding_size
         item_emb = torch.zeros(max_num_items, embedding_dim, dtype=torch.float32)
         all_skus = np.zeros(max_num_items, dtype=object)
-        write_record_log(f"预定义 {max_num_items} × {embedding_dim} embedding tensor 耗时: {(time.time() - process_start_time):.3f} s" , log_path=self.record_path)
+        write_record_log(f"Pre-allocated {max_num_items} x {embedding_dim} embedding tensor, time: {(time.time() - process_start_time):.3f} s" , log_path=self.record_path)
 
         start_time = time.time()
         if self.data_dir is not None:
@@ -62,115 +62,115 @@ class TigerDataset(PreprocessingMixin):
         elif self.pt_files is not None:
             pt_files = self.pt_files
         else:
-            write_record_log(f"未指定数据目录或.pt文件列表，无法加载数据" , log_path=self.record_path)
-            raise ValueError("未指定数据目录或.pt文件列表，无法加载数据")
+            write_record_log(f"No data directory or .pt file list specified, cannot load data" , log_path=self.record_path)
+            raise ValueError("No data directory or .pt file list specified, cannot load data")
         pt_files.sort()
         
         if not pt_files:
-            raise ValueError(f"在 {self.data_dir} 目录下未找到任何.pt文件")
-        write_record_log(f"找到 {len(pt_files)} 个.pt文件，排序耗时: {(time.time() - start_time):.3f} s" , log_path=self.record_path)
+            raise ValueError(f"No .pt files found in directory: {self.data_dir}")
+        write_record_log(f"Found {len(pt_files)} .pt files, sort time: {(time.time() - start_time):.3f} s" , log_path=self.record_path)
 
         current_position = 0
         for i, pt_file in enumerate(pt_files):
             load_start = time.time()
             try:
-                # 包含"parent_asin"和"embedding"的字典
+                # Dictionary containing "parent_asin" and "embedding"
                 pt_data = torch.load(pt_file)
                 
                 if "item_id" not in pt_data or "embedding" not in pt_data:
-                    raise ValueError(f"文件 {pt_file} 必须包含'parent_asin'和'embedding'键")
+                    raise ValueError(f"File {pt_file} must contain 'parent_asin' and 'embedding' keys")
                 
                 parent_asin_chunk = pt_data["item_id"]
                 if isinstance(parent_asin_chunk, torch.Tensor):
                     sku_chunk = parent_asin_chunk.numpy().astype(str)
-                else:  # 若为list直接转numpy
+                else:  # if list, convert to numpy directly
                     sku_chunk = np.array(parent_asin_chunk, dtype=str)
 
                 emb_chunk = pt_data["embedding"]
                 
                 # if sku_chunk.dtype != torch.int64:
-                #     raise ValueError(f"文件 {pt_file} 中的'sku'必须是int64类型，实际: {sku_chunk.dtype}")
+                #     raise ValueError(f"File {pt_file}: 'sku' must be int64 type, actual: {sku_chunk.dtype}")
                 
                 if emb_chunk.dim() != 2:
-                    raise ValueError(f"文件 {pt_file} 中的'embedding'不是2维的，实际维度: {emb_chunk.dim()}")
+                    raise ValueError(f"File {pt_file}: 'embedding' is not 2-dimensional, actual dims: {emb_chunk.dim()}")
                 
                 chunk_num, chunk_dim = emb_chunk.shape
                 if chunk_dim != embedding_dim:
                     raise ValueError(
-                        f"文件 {pt_file} 中的embedding维度不匹配，"
-                        f"预期: {embedding_dim}, 实际: {chunk_dim}"
+                        f"File {pt_file}: embedding dimension mismatch, "
+                        f"expected: {embedding_dim}, actual: {chunk_dim}"
                     )
                 
                 if len(sku_chunk) != chunk_num:
                     raise ValueError(
-                        f"文件 {pt_file} 中的'sku'和'embedding'数量不匹配，"
-                        f"sku数量: {len(sku_chunk)}, embedding数量: {chunk_num}"
+                        f"File {pt_file}: 'sku' and 'embedding' count mismatch, "
+                        f"sku count: {len(sku_chunk)}, embedding count: {chunk_num}"
                     )
                 
-                # 检查是否有足够空间容纳当前chunk
+                # Check if there is enough space for the current chunk
                 if current_position + chunk_num > max_num_items:
                     adjust_num = max_num_items - current_position
                     sku_chunk = sku_chunk[:adjust_num]
                     emb_chunk = emb_chunk[:adjust_num]
                     chunk_num = adjust_num
                     write_record_log(
-                        f"警告: 预定义空间不足，调整当前chunk大小为 {chunk_num}, "
-                        f"文件: {pt_file}" , log_path=self.record_path
+                        f"Warning: pre-allocated space insufficient, adjusted chunk size to {chunk_num}, "
+                        f"file: {pt_file}" , log_path=self.record_path
                     )
                 
                 item_emb[current_position : current_position + chunk_num, :] = emb_chunk
                 all_skus[current_position : current_position + chunk_num] = sku_chunk
                 
-                # 更新当前位置
+                # Update current position
                 current_position += chunk_num
                 
                 write_record_log(
-                    f"已加载 {i+1}/{len(pt_files)}: {pt_file}, "
-                    f"大小: {chunk_num} × {chunk_dim}, "
-                    f"当前位置: {current_position}, "
-                    f"耗时: {(time.time() - load_start):.3f} s" , log_path=self.record_path
+                    f"Loaded {i+1}/{len(pt_files)}: {pt_file}, "
+                    f"size: {chunk_num} x {chunk_dim}, "
+                    f"current position: {current_position}, "
+                    f"time: {(time.time() - load_start):.3f} s" , log_path=self.record_path
                 )
                 
                 if current_position >= max_num_items:
-                    write_record_log(f"已达到预定义的最大embedding数量 {max_num_items}，停止加载剩余文件" , log_path=self.record_path)
+                    write_record_log(f"Reached pre-defined max embedding count {max_num_items}, stopping loading remaining files" , log_path=self.record_path)
                     break
                 
             except Exception as e:
-                write_record_log(f"加载文件 {pt_file} 时出错: {str(e)}" , log_path=self.record_path)
+                write_record_log(f"Error loading file {pt_file}: {str(e)}" , log_path=self.record_path)
                 raise
 
         if current_position < max_num_items:
             write_record_log(
-                f"INFO: 所有.pt文件加载完成，共填充了 {current_position} 个embedding，"
-                f"小于预定义的 {max_num_items} 个，仅保留已填充部分" , log_path=self.record_path
+                f"INFO: All .pt files loaded, filled {current_position} embeddings, "
+                f"less than pre-defined {max_num_items}, keeping only filled portion" , log_path=self.record_path
             )
-            # 截断到实际填充的大小
+            # Truncate to actual filled size
             item_emb = item_emb[:current_position, :]
             all_skus = all_skus[:current_position]
         else:
             write_record_log(
-                f"INFO: 所有.pt文件加载完成，正好填充了预定义的 {max_num_items} 个embedding" , log_path=self.record_path
+                f"INFO: All .pt files loaded, exactly filled pre-defined {max_num_items} embeddings" , log_path=self.record_path
             )
 
-        # 存储数据到HeteroData
+        # Store data to HeteroData
         data["item"].x = item_emb
-        data["item"].itemId_list = all_skus # 从pt文件中获取的sku作为itemId
+        data["item"].itemId_list = all_skus  # SKU from pt files used as itemId
         
-        print(f"最终item_emb shape: {item_emb.shape}")
-        print(f"最终itemId_list shape: {data['item'].itemId_list.shape}")
-        print("itemId_list的dtype:", data["item"].itemId_list.dtype)
-        write_record_log(f"最终item_emb shape: {item_emb.shape}" , log_path=self.record_path)
-        write_record_log(f"最终itemId_list shape: {data['item'].itemId_list.shape}" , log_path=self.record_path)
-        write_record_log(f"itemId_list的dtype: {data['item'].itemId_list.dtype}" , log_path=self.record_path)
+        print(f"Final item_emb shape: {item_emb.shape}")
+        print(f"Final itemId_list shape: {data['item'].itemId_list.shape}")
+        print("itemId_list dtype:", data["item"].itemId_list.dtype)
+        write_record_log(f"Final item_emb shape: {item_emb.shape}" , log_path=self.record_path)
+        write_record_log(f"Final itemId_list shape: {data['item'].itemId_list.shape}" , log_path=self.record_path)
+        write_record_log(f"itemId_list dtype: {data['item'].itemId_list.dtype}" , log_path=self.record_path)
 
         start_time = time.time()
         gen = torch.Generator()
         gen.manual_seed(42)
-        data["item"].is_train = torch.rand(current_position, generator=gen) > 0.01  # 99%训练，1%评估
-        write_record_log(f"生成训练/测试分割标记 耗时: {(time.time() - start_time):.3f} s" , log_path=self.record_path)
+        data["item"].is_train = torch.rand(current_position, generator=gen) > 0.01  # 99% train, 1% eval
+        write_record_log(f"Generating train/test split mask, time: {(time.time() - start_time):.3f} s" , log_path=self.record_path)
         print("=====train/eval split done=====")
 
-        write_record_log(f"数据加载完成，总耗时: {(time.time() - process_start_time):.3f} s" , log_path=self.record_path)
+        write_record_log(f"Data loading complete, total time: {(time.time() - process_start_time):.3f} s" , log_path=self.record_path)
         self.data = data
 
 class TigerDataset_Direct(PreprocessingMixin):
@@ -180,25 +180,25 @@ class TigerDataset_Direct(PreprocessingMixin):
         skus,
         dim_cutoff = 2560,
     ):
-        # embedddings.shape = [len(skus) , embedding_dim]
-        # skus是 nd.array(int64)
+        # embedddings.shape = [len(skus), embedding_dim]
+        # skus is nd.array(int64)
         self.data = HeteroData()
         self.data["item"].x = embeddings
         self.data["item"].itemId_list = skus
         gen = torch.Generator()
         gen.manual_seed(42)
-        self.data["item"].is_train = torch.rand(len(skus), generator=gen) > 0.02  # 99%训练，1%评估
+        self.data["item"].is_train = torch.rand(len(skus), generator=gen) > 0.02  # 99% train, 1% eval
 
         self.dim_cutoff = dim_cutoff
 
 
 class ItemData(Dataset):
     def __init__(self, raw_dataset, train_test_split):
-        self.raw_data = raw_dataset.data["item"]["x"]  # 原始embedding（共享内存）
-        self.raw_sku = raw_dataset.data["item"]["itemId_list"]  # 原始sku（共享内存）
+        self.raw_data = raw_dataset.data["item"]["x"]  # raw embeddings (shared memory)
+        self.raw_sku = raw_dataset.data["item"]["itemId_list"]  # raw SKUs (shared memory)
         self.dim_cutoff = raw_dataset.dim_cutoff
         
-        # 整数索引替代布尔mask
+        # Integer index instead of boolean mask
         if train_test_split == "train":
             filt = raw_dataset.data["item"]["is_train"]
         elif train_test_split == "eval":
@@ -208,14 +208,14 @@ class ItemData(Dataset):
         else:
             raise ValueError(f"Invalid train_test_split: {train_test_split}")
         
-        # 仅存储索引，不复制数据
-        self.indices = torch.nonzero(filt, as_tuple=False).squeeze(dim=1)  # 形状为 (N,) 的int tensor
+        # Store only indices, don't copy data
+        self.indices = torch.nonzero(filt, as_tuple=False).squeeze(dim=1)  # shape (N,) int tensor
 
     def __len__(self):
         return len(self.indices)
 
     def __getitem__(self, idx):
-        # 通过索引动态获取数据（不复制，仅引用）
+        # Dynamically get data via index (no copy, just reference)
         raw_idx = self.indices[idx]
         x = self.raw_data[raw_idx, : self.dim_cutoff]
         sku_id = self.raw_sku[raw_idx]
@@ -224,7 +224,7 @@ class ItemData(Dataset):
 
 
 def create_infinite_dataloader(dataloader):
-    """创建无限循环的dataloader迭代器"""
+    """Create an infinite loop dataloader iterator"""
     while True:
         for batch in dataloader:
             yield batch
@@ -235,19 +235,19 @@ class TemplatedTextDataset(Dataset):
                 text_template: str,
                 custom_fields: List[str]):
         """
-        初始化数据集
-        :param file_path: 输入文件路径
-        :param text_template: 文本模板，使用{字段名}作为占位符
-        :param custom_fields: 需要保留的自定义字段列表
+        Initialize dataset
+        :param file_path: input file path
+        :param text_template: text template, using {field_name} as placeholders
+        :param custom_fields: list of custom fields to preserve
         """
         self.file_path = file_path
         self.text_template = text_template
         self.custom_fields = custom_fields
-        # 存储数据、模板应用错误数、总行数
+        # Store data, template error count, total lines
         self.data, self.template_error_count, self.total_lines = self._load_and_process_data()  
 
     def _load_and_process_data(self) -> tuple[List[Dict], int, int]:
-        """修改返回值：(数据列表, 模板应用错误行数, 总行数)"""
+        """Return value: (data list, template error lines, total lines)"""
         file_ext = os.path.splitext(self.file_path)[-1].lower()
         
         if file_ext == ".json":
@@ -255,12 +255,12 @@ class TemplatedTextDataset(Dataset):
         elif file_ext == ".parquet":
             return self._load_parquet()
         else:
-            raise ValueError(f"不支持的文件格式：{file_ext}，仅支持 .json 和 .parquet")
+            raise ValueError(f"Unsupported file format: {file_ext}, only .json and .parquet are supported")
 
     def _apply_template(self, item: Dict) -> tuple[str, bool]:
         """
-        应用模板并返回结果和是否成功
-        :return: (格式化文本, 成功标志) 失败时返回("", False)
+        Apply template and return result and success flag
+        :return: (formatted text, success flag) returns ("", False) on failure
         """
         try:
             formatted_text = self.text_template.format_map(
@@ -268,17 +268,17 @@ class TemplatedTextDataset(Dataset):
             )
             return formatted_text, True
         except KeyError as e:
-            print(f"警告：模板中包含不存在的字段 {e}，当前条目实际值：{item}")
-            return "", False  # 失败时返回空文本和False
+            print(f"Warning: template contains non-existent field {e}, current item values: {item}")
+            return "", False  # Return empty text and False on failure
 
     def _extract_template_variables(self) -> List[str]:
-        """从模板中提取所有占位符字段名"""
+        """Extract all placeholder field names from template"""
         return re.findall(r'\{(.*?)\}', self.text_template)
 
     def _load_json(self) -> tuple[List[Dict], int, int]:
-        """加载JSON文件并应用template，返回(数据, 模板错误行数, 总行数)"""
+        """Load JSON file and apply template, return (data, template error lines, total lines)"""
         data = []
-        template_error_count = 0  # 模板应用错误计数
+        template_error_count = 0  # template application error count
         with open(self.file_path, "r", encoding="utf-8") as f:
             total_lines = sum(1 for _ in f)
         
@@ -290,43 +290,43 @@ class TemplatedTextDataset(Dataset):
                 try:
                     item = json.loads(line)  
                 except json.JSONDecodeError as e:
-                    print(f"警告：第{line_num}行JSON解析错误，内容：{line[:100]}... 错误原因：{e}")
+                    print(f"Warning: JSON parse error at line {line_num}, content: {line[:100]}... error: {e}")
                     continue 
                 
-                # 应用模板并检查是否成功
+                # Apply template and check if successful
                 formatted_text, is_success = self._apply_template(item)
                 if not is_success:
                     template_error_count += 1 
                     continue 
                 
-                # 收集数据（仅保留成功且非空的文本）
+                # Collect data (only keep successful and non-empty text)
                 if formatted_text.strip():
                     metadata = {"text": formatted_text}
                     for field in self.custom_fields:
                         metadata[field] = item.get(field, None)
                     data.append(metadata)
         
-        print(f"load JSON done，有效数据：{len(data)}/{total_lines}，模板应用错误行数：{template_error_count}/{total_lines}")
+        print(f"load JSON done, valid data: {len(data)}/{total_lines}, template error lines: {template_error_count}/{total_lines}")
         return data, template_error_count, total_lines
 
     def _load_parquet(self) -> tuple[List[Dict], int, int]:
-        """加载Parquet文件并应用template，返回(数据, 模板错误行数, 总行数)"""
+        """Load Parquet file and apply template, return (data, template error lines, total lines)"""
         data = []
-        template_error_count = 0  # 模板应用错误计数
+        template_error_count = 0  # template application error count
         df = pd.read_parquet(self.file_path)
-        total_rows = len(df)  # 总行数
+        total_rows = len(df)  # total rows
         
         for row_num, row in enumerate(tqdm(df.iterrows(), total=total_rows, desc=f"load Parquet: {self.file_path}"), 1):
             _, row_data = row
             item = row_data.to_dict()
             
-            # 应用模板并检查是否成功
+            # Apply template and check if successful
             formatted_text, is_success = self._apply_template(item)
             if not is_success:
                 template_error_count += 1 
                 continue 
             
-            # 收集数据（仅保留成功且非空的文本）
+            # Collect data (only keep successful and non-empty text)
             if formatted_text.strip():
                 metadata = {"text": formatted_text}
                 for field in self.custom_fields:
@@ -334,7 +334,7 @@ class TemplatedTextDataset(Dataset):
                     metadata[field] = value if pd.notna(value) else None
                 data.append(metadata)
         
-        print(f"load Parquet done，有效数据：{len(data)}/{total_rows}，模板应用错误行数：{template_error_count}/{total_rows}")
+        print(f"load Parquet done, valid data: {len(data)}/{total_rows}, template error lines: {template_error_count}/{total_rows}")
         return data, template_error_count, total_rows
 
     def __len__(self) -> int:
@@ -344,7 +344,7 @@ class TemplatedTextDataset(Dataset):
         return self.data[idx]
     
     def get_metadata(self) -> pd.DataFrame:
-        """获取所有元数据（含自定义字段）"""
+        """Get all metadata (including custom fields)"""
         return pd.DataFrame(self.data)
 
 class RawDataset:
@@ -372,7 +372,7 @@ class RawDataset:
         return len(self.dataset)
 
     def get_file_info(self) -> Dict:
-        """获取数据集信息"""
+        """Get dataset info"""
         return {
             "total_records": len(self.dataset),
             "columns": self.dataset.column_names,
@@ -399,7 +399,7 @@ class SeqData(Dataset):
         self.item_ids = raw_dataset["itemId"]
         self.item_ids_fut = raw_dataset["itemId_fut"]
 
-        # 如果是tensor，转换为list以便后续处理
+        # If tensor, convert to list for subsequent processing
         if hasattr(self.user_ids, "tolist"):
             self.user_ids = self.user_ids.tolist()
         if hasattr(self.item_ids, "tolist"):

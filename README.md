@@ -1,28 +1,32 @@
-# train
+# Boost-SFT
 
+Code for the Boost-SFT paper.
 
-# inference
+## Pipeline
 
-`generate_vllm` : 使用vllm进行generate，在空环境下(例如只有torch，而且版本和cuda也不对劲，简单来讲租个3090) , 直接
-```python
-pip install vllm
+1. **SID construction** — Train RQ-VAE to generate semantic IDs for items (`sid/RQVAE/`)
+2. **Data preparation** — Build SFT/DPO training data from user sequences and item metadata (`src/data/`)
+3. **Training** — SFT with attenuation strategy, DPO, or standard SFT via LLaMA-Factory (`src/train/`)
+4. **Inference** — Batch generation with vLLM (`src/inference/`)
+5. **Evaluation** — Hit Rate / NDCG metrics on recommendation tasks (`src/eval/`)
+
+## Directory Structure
+
 ```
-即可
+Boost-SFT/
+├── src/
+│   ├── data/           # Data preprocessing: user sequences, SID alignment, JSONL merging
+│   ├── train/          # Training scripts: SFT (attenuation/loss variants), DPO
+│   ├── eval/           # Evaluation: Hit Rate, NDCG at item and SID levels
+│   ├── inference/      # vLLM-based batch inference
+│   ├── model_tools/    # Tokenizer utilities (add/test special tokens)
+│   └── sample_data_format/  # Example data format for reference
+├── sid/
+│   ├── RQVAE/          # RQ-VAE model for semantic ID construction
+│   └── sid_evaluation/ # SID-level case analysis
+└── data/final_result/  # Experiment result CSVs
+```
 
-# eval
+## Quick Start
 
-`eval` : 具体进文件看
-
-# model_tools
-
-**在训练之前务必先进行add tokens和test tokens步骤**
-
-# data
-
-steps:
-
-1. `sid_pt_to_csv` : 在rq-vae训练好后，将保存的.pt文件翻译成csv
-2. `get_sid_understand_data` : 将拿到的csv和mata_data.json一起生成sid理解task的训练数据
-3. `get_seq_data` : sft当中rec任务的数据
-    3.1 `get_seq_data_dpo` : 适用于dpo的rec任务的数据(dpo阶段也应该只有rec任务)
-4. `join_jsonl` 将2和3得到的数据join到一起，成为sft的训练数据
+See individual scripts for usage. Training uses [LLaMA-Factory](https://github.com/hiyouga/LLaMA-Factory) as the backend.

@@ -10,6 +10,3 @@ python ./train/sft_attenuation.py \
     --output_dir "save model path" \
     --k1 3 --m1 15 \
     --k2 3 --m2 15
-    #--resume_from_checkpoint "/mnt/Qwen3-0.6B-addtoken"
-
-# 

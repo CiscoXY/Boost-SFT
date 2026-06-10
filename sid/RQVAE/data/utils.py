@@ -12,7 +12,7 @@ def cycle(dataloader):
 def item_batch_to(batch, device):
     processed_fields = []
     for _, value in batch._asdict().items():
-        # 仅对Tensor类型to(device)（ids和x），字符串sku_id保留
+        # Only move Tensor types to device (ids and x), keep string sku_id as-is
         if isinstance(value, torch.Tensor):
             processed_fields.append(value.to(device))
         else:
@@ -33,9 +33,9 @@ def next_seq_batch(dataloader, device):
     return seq_batch_to(batch, device)
 
 def write_record_log(record_str: str , log_path: Optional[str] = None):
-    """写入记录数到日志文件"""
+    """Write record to log file"""
     if log_path is None:
-        log_path = "/mnt/rqvae日志.log"
+        log_path = "/path/to/rqvae.log"
     log_dir = os.path.dirname(log_path)
     if log_dir and not os.path.exists(log_dir):
         os.makedirs(log_dir, exist_ok=True)

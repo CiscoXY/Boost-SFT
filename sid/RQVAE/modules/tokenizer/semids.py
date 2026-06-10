@@ -152,7 +152,7 @@ class SemanticIdTokenizer(nn.Module):
     def precompute_corpus_ids(self, item_dataset) -> Tensor:
         cached_ids = None
         dedup_dim = []
-        sku_list = [] # 存储sku
+        sku_list = [] # store SKUs
         sampler = BatchSampler(
             SequentialSampler(range(len(item_dataset))),
             batch_size=512,
@@ -206,7 +206,7 @@ class SemanticIdTokenizer(nn.Module):
     @eval_mode
     def precompute_corpus_ids(self, item_dataset) -> Tensor:
         cached_ids = None
-        sku_list = []  # 存储sku
+        sku_list = []  # store SKUs
         sampler = BatchSampler(
             SequentialSampler(range(len(item_dataset))),
             batch_size=512,
@@ -242,7 +242,7 @@ class SemanticIdTokenizer(nn.Module):
             if cached_ids is None:
                 cached_ids = batch_ids.clone()
             else:
-                # 直接拼接，不检测重复
+                # Direct concatenation, no duplicate detection
                 cached_ids = pack([cached_ids, batch_ids], "* d")[0]
         
         self.cached_ids = cached_ids

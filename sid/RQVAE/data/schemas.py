@@ -14,7 +14,7 @@ class SeqBatch(NamedTuple):
 class ItemBatch(NamedTuple):
     ids: Tensor
     x: Tensor
-    sku_id: list  # 原始sku_id字符串
+    sku_id: list  # raw sku_id string
 
 
 class TokenizedSeqBatch(NamedTuple):

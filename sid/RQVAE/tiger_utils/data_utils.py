@@ -14,14 +14,14 @@ def process_rq_vae_codebook(semantic_ids_list, sku_list):
     item_to_tokens = {}
     tokens_to_item = defaultdict(list)
     for idx, (sku_id, semantic_ids) in enumerate(zip(sku_list, semantic_ids_list)):
-        # 构建SKU到tokens的映射
+        # Build SKU-to-tokens mapping
         tokens = []
         for layer_idx, semantic_id in zip('abcdefg', semantic_ids):
             token = f"<{layer_idx}_{semantic_id}>"
             tokens.append(token)
         item_to_tokens[sku_id] = tokens
         
-        # 构建tokens组合到SKU的映射
+        # Build tokens-to-SKU mapping
         tokens_key = tuple(tokens)
         tokens_to_item[tokens_key].append(sku_id)
     
@@ -35,7 +35,7 @@ def process_rq_vae_codebook(semantic_ids_list, sku_list):
 
 def process_for_train_data(train_data, item2tokens):
     def items_to_token_string(items):
-        """将物品列表转换为token字符串"""
+        """Convert item list to token string"""
         token_string = ""
         for item in items:
             if item in item2tokens:
@@ -46,7 +46,7 @@ def process_for_train_data(train_data, item2tokens):
         return token_string.rstrip(",")
 
     def labels_to_token_string(labels):
-        """将标签列表转换为token字符串"""
+        """Convert label list to token string"""
         token_string = ""
         for label in labels:
             if label in item2tokens:
@@ -56,7 +56,7 @@ def process_for_train_data(train_data, item2tokens):
                 print(f"Warning: Label {label} not found in mapping")
         return token_string
 
-    # 生成训练数据
+    # Generate training data
     prompts = []
     for item in train_data:
         user_id = item["userId"]
@@ -64,7 +64,7 @@ def process_for_train_data(train_data, item2tokens):
         labels = item["label"]
         train_token_string = items_to_token_string(item_ids)
         label_token_string = labels_to_token_string(labels)
-        user_content = f"用户ID:{user_id},该用户已按时间顺序点击以下商品：{train_token_string}，你能预测用户下一个可能点击的商品吗？"
+        user_content = f"User ID:{user_id}, this user has clicked the following items in chronological order: {train_token_string}, can you predict the next item the user might click?"
         conversation = {
             "conversations": [
                 {"role": "user", "content": user_content},
@@ -77,7 +77,7 @@ def process_for_train_data(train_data, item2tokens):
 
 
 def load_multiple_files(file_paths, file_type="json") -> HFDataset:
-    combined_dataset = None  # 初始化合并后的数据集为None
+    combined_dataset = None  # Initialize merged dataset as None
 
     for i , file_path in enumerate(file_paths):
         print(f"Loading: {file_path}")
@@ -91,15 +91,15 @@ def load_multiple_files(file_paths, file_type="json") -> HFDataset:
 
             print(f"  -> Loaded {len(dataset)} records")
             
-            # 读取一个文件就拼接一次
+            # Concatenate after loading each file
             if combined_dataset is None:
                 combined_dataset = dataset
             else:
                 start_time =  time.time()
                 combined_dataset = concatenate_datasets([combined_dataset, dataset])
-                print(f" 当前合并耗时: {(time.time() - start_time):.3f}s")
+                print(f" Merge time: {(time.time() - start_time):.3f}s")
                 print(f"  -> Combined dataset size after this file: {len(combined_dataset)} records")
-                write_record_log(f"第 {i+1} 个file : {file_path} 合并耗时 : {(time.time() - start_time):.2f} s")
+                write_record_log(f"File {i+1}: {file_path} merge time: {(time.time() - start_time):.2f} s")
             del dataset 
             gc.collect()
 
@@ -130,13 +130,13 @@ def process_for_alignment_data(train_data, item2tokens):
         tokens_str = "".join(special_tokens)
 
         prompt_1 = {
-            "instruction": f"商品{tokens_str}的描述是什么",
+            "instruction": f"What is the description of item {tokens_str}?",
             "output": item_description,
         }
         training_prompts_token2text.append(prompt_1)
 
         prompt_2 = {
-            "instruction": f"哪个商品的描述是:{item_description}",
+            "instruction": f"Which item has the description: {item_description}",
             "output": tokens_str,
         }
         training_prompts_text2token.append(prompt_2)
@@ -208,7 +208,7 @@ def load_and_prepare_test_data(test_data, item2tokens):
         user_id = item["userId"]
         item_ids = item["itemId"]
         test_token_string = items_to_token_string(item_ids)
-        prompt_content = f"用户ID:{user_id},该用户已按时间顺序点击以下商品：{test_token_string}，你能预测用户下一个可能点击的商品吗？"
+        prompt_content = f"User ID:{user_id}, this user has clicked the following items in chronological order: {test_token_string}, can you predict the next item the user might click?"
 
         test_item = {"prompt": prompt_content}
         test_prompts.append(test_item)
