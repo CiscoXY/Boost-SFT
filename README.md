@@ -1,12 +1,5 @@
 # train
 
-在train中，只有sft_attenuation.py是可以直接脚本启动的，其他的具体配置都写死在代码里了
-
-`sft_attenuation` : 3stage的衰减版本sft
-`sft_llamafactory` : 使用llamafactory的最传统sft
-`dpo` : lora版本
-`dpo_full` : full版本
-`sft_loss_version` : mask掉input loss，并且完全衰减到指定weights的版本
 
 # inference
 
