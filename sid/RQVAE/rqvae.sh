@@ -1,0 +1,1 @@
+/root/miniconda3/envs/myconda/bin/python /mnt/graduation_paper/sid/RQVAE/rqvae.py --config_path /mnt/graduation_paper/config/rqvae_config.json
